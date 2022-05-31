@@ -37,6 +37,7 @@ OBJS = \
   $K/plic.o \
   $K/virtio_disk.o \
   $K/trace.o \
+  $K/sysinfo.o \
 
 ifeq ($(LAB),pgtbl)
 OBJS += $K/vmcopyin.o
@@ -151,6 +152,7 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_trace\
+	$U/_sysinfotest\
 
 
 

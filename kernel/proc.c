@@ -696,3 +696,16 @@ procdump(void)
     printf("\n");
   }
 }
+
+// 返回当前procnum
+int procnum(void){
+  struct proc *p;
+  int count=0;
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    if(p->state != UNUSED) {
+      count = count + 1;
+    }
+  }
+  return count;
+}
