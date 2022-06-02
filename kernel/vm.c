@@ -47,6 +47,19 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+pagetable_t ukvminit(){
+  pagetable_t ukvm_pagetable = (pagetable_t) kalloc();
+  memset(ukvm_pagetable, 0, PGSIZE);
+  ukvmmap(ukvm_pagetable,UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(ukvm_pagetable,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(ukvm_pagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  ukvmmap(ukvm_pagetable,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  ukvmmap(ukvm_pagetable,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  ukvmmap(ukvm_pagetable,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  ukvmmap(ukvm_pagetable,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  return ukvm_pagetable;
+}
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
@@ -121,18 +134,25 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+void
+ukvmmap(pagetable_t ukvm_pagetable,uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(ukvm_pagetable, va, sz, pa, perm) != 0)
+    panic("ukvmmap");
+}
+
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
 // assumes va is page aligned.
 uint64
-kvmpa(uint64 va)
+kvmpa(pagetable_t ukvm_pagetable,uint64 va)
 {
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  pte = walk(ukvm_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
