@@ -440,3 +440,30 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+// typedef uint64 pte_t;
+// typedef uint64 *pagetable_t; // 512 PTEs
+void _vmprint(pagetable_t pagetable,int depth){
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      // this PTE points to a lower-level page table.
+      // 左移10 右移12 就是获取44位PPN 右补12位0表示所指的起始物理地址
+      uint64 child = PTE2PA(pte);
+      for(int j=1;j<=depth;j++)
+        j==1? printf(".."):printf(" ..");
+      printf("%d: pte %p pa %p\n",i,pte,child);
+      // 根据depth深度判断
+      if (depth+1<=3)
+      // // 根据flag是否设置判断 设置了的是最底一层
+      // if ((pte & (PTE_R|PTE_W|PTE_X)) == 0)
+        _vmprint((pagetable_t)child, depth+1);
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  _vmprint(pagetable,1);
+}
