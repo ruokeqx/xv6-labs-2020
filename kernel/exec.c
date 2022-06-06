@@ -17,7 +17,7 @@ exec(char *path, char **argv)
   uint64 argc, sz = 0, sp, ustack[MAXARG+1], stackbase;
   struct elfhdr elf;
   struct inode *ip;
-  struct proghdr ph;
+  struct proghdr ph;// Program section header
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
@@ -35,6 +35,8 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+// Create a user page table for a given process,
+// with no user memory, but with trampoline pages.
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
@@ -71,6 +73,8 @@ exec(char *path, char **argv)
   if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
   sz = sz1;
+  // mark a PTE invalid for user access.
+  // used by exec for the user stack guard page.
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;
   stackbase = sp - PGSIZE;
@@ -115,6 +119,13 @@ exec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+
+  // exec 的操作就是把当前进程的args和pagetable换成新的进程的
+  // unmap old kernel page table, and copy th new one
+  uvmunmap(p->ukvm_pagetable, 0, PGROUNDUP(oldsz)/PGSIZE, 0);
+  if(ukvmcopy(p->pagetable, p->ukvm_pagetable, 0, p->sz) < 0){
+      goto bad;
+  }
 
   if(p->pid == 1)
     vmprint(p->pagetable);

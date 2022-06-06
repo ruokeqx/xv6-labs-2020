@@ -52,7 +52,7 @@ pagetable_t ukvminit(){
   memset(ukvm_pagetable, 0, PGSIZE);
   ukvmmap(ukvm_pagetable,UART0, UART0, PGSIZE, PTE_R | PTE_W);
   ukvmmap(ukvm_pagetable,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
-  ukvmmap(ukvm_pagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  // ukvmmap(ukvm_pagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W); // panic remap   CLINT under PLIC
   ukvmmap(ukvm_pagetable,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
   ukvmmap(ukvm_pagetable,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
   ukvmmap(ukvm_pagetable,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
@@ -355,6 +355,37 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+int
+ukvmcopy(pagetable_t upage, pagetable_t ukpage, uint64 begin, uint64 end)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  uint64 begin_page = PGROUNDUP(begin);
+
+  for(i = begin_page; i < end; i += PGSIZE){
+    // walk获取物理地址
+    if((pte = walk(upage, i, 0)) == 0)
+      panic("ukvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("ukvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    // A page with PTE_U set cannot be accessed in kernel mode
+    // flags = PTE_FLAGS(*pte);
+    flags = (*pte) & (0x3FF - (1<<4)); // 根据hint 去掉内存PTE_U的flag PTE_FLAGS(*pte) & (~PTE_U);
+    // 此处删除uvmcopy代码中的kalloc 因为这里不需要新空间 只需要指向已经存在的物理地址就好
+    // 进程的内核页表上放上物理地址
+    if(mappages(ukpage, i, PGSIZE, (uint64)pa, flags) != 0){
+      goto err;
+    }
+  }
+  return 0;
+
+err:
+  uvmunmap(ukpage, begin_page, (i- begin_page) / PGSIZE, 0);
+  return -1;
+}
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -399,6 +430,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
+  return copyin_new(pagetable, dst, srcva, len);
   uint64 n, va0, pa0;
 
   while(len > 0){
@@ -425,6 +457,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
+  return copyinstr_new(pagetable, dst, srcva, max);
   uint64 n, va0, pa0;
   int got_null = 0;
 

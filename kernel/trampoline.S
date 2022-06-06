@@ -67,7 +67,7 @@ uservec:
         # restore kernel stack pointer from p->trapframe->kernel_sp
         ld sp, 8(a0)
 
-        # make tp hold the current hartid, from p->trapframe->kernel_hartid
+        # make tp hold the current hartid(core number)(cpu[hartid]), from p->trapframe->kernel_hartid
         ld tp, 32(a0)
 
         # load the address of usertrap(), p->trapframe->kernel_trap
