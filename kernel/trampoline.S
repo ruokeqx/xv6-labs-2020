@@ -93,9 +93,13 @@ userret:
         # a1: user page table, for satp.
 
         # switch to the user page table.
+        # a1是传入的第二个参数 也就是satp用户页表地址 这里是将内核页表地址换回用户页表
         csrw satp, a1
         sfence.vma zero, zero
 
+        # 此处load 112(a0)已经是系统调用返回值 在syscall() 中将返回值放到了trapframe->a0
+        # 然后次函数最后一条指令可以swap sscratch和此处传入的a0(第一个传入的地址trapframe的地址)
+        # 将sscratch重新赋值trapframe以便下次重入使用
         # put the saved user a0 in sscratch, so we
         # can swap it with our a0 (TRAPFRAME) in the last step.
         ld t0, 112(a0)
@@ -136,6 +140,8 @@ userret:
 	# restore user a0, and save TRAPFRAME in sscratch
         csrrw a0, sscratch, a0
         
+        # sret指令设置pc为sepc(usertrap()保存的) 回到用户系统调用的下一条指令
+        # sret指令重新启用中断
         # return to user mode and user pc.
         # usertrapret() set up sstatus and sepc.
         sret
