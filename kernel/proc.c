@@ -126,6 +126,11 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  // 初始化参数
+  p->interval = 0;
+  p->handler = 0;
+  p->ticks = 0;
+  p->trapframebak = 0;
 
   return p;
 }

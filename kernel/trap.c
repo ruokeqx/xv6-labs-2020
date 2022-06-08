@@ -91,9 +91,20 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+  // devintr() returns 2 if timer interrupt
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    // handler可能是0 通过interval是否为0判断系统调用设置的handler
+    // 只有启用系统调用 当handler不为0的时候才ticks自加 不能放在if外面否则永远不可能tisks==interval
+    // p->ticks += 1;
+    if(p->interval != 0 && ++p->ticks == p->interval){
+      p->trapframebak = p->trapframe + 512;
+      memmove(p->trapframebak, p->trapframe, sizeof(struct trapframe));
+      // 恢复需要保存此处epc
+      p->trapframe->epc = p->handler;
+    }
     yield();
+  }
 
   usertrapret();
 }
