@@ -46,9 +46,15 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  struct proc *p = myproc();
+  addr = p->sz;
+  if (n >= 0 && addr + n >= addr){  // 不能上溢
+    p->sz += n;
+  }else if(n < 0 && addr + n >= PGROUNDUP(p->trapframe->sp)){ // 不能进入栈空间
+    p->sz = uvmdealloc(p->pagetable, addr, addr + n);
+  }
+  // if(growproc(n) < 0)
+  //   return -1;
   return addr;
 }
 
