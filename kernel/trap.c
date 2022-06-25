@@ -67,12 +67,19 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 15){
+    // 只有当写缺页发生在COW页面上是才需要从旧的page拷贝
+    if (walkcowaddr(p->pagetable, r_stval()) == 0) {
+      p->killed = 1;
+      goto kill;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
 
+kill:
   if(p->killed)
     exit(-1);
 

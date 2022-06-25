@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -108,6 +110,51 @@ walkaddr(pagetable_t pagetable, uint64 va)
   if((*pte & PTE_U) == 0)
     return 0;
   pa = PTE2PA(*pte);
+  return pa;
+}
+
+uint64
+walkcowaddr(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+
+  if(va >= MAXVA)
+    return 0;
+
+  pte = walk(pagetable, va, 0);
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  pa = PTE2PA(*pte);
+  if((*pte & PTE_COW) && !(*pte & PTE_W)){ // 是COW page 但是没有PTE_W权限
+    // kalloc
+    // ref count
+    // memmove
+    // modify kalloc set count=1
+    char * mem = kalloc();
+    if (mem == 0){
+      // exit(-1); // killed
+      return 0;
+    }
+    memmove(mem, (void *)pa, PGSIZE);
+    // 新创建的页面上设置PTE_W
+    flags = (PTE_FLAGS(*pte) & (~PTE_COW)) | PTE_W;
+    va = PGROUNDDOWN(va);
+    // modify kfree
+    // only count=0 dofree
+    uvmunmap(pagetable, va, 1, 1);   // uvmunmap(pt,va,npages,dofree)
+    if (mappages(pagetable,va,PGSIZE,(uint64)mem,flags)!=0){
+      kfree(mem);
+      // exit(-1); // killed
+      return 0;
+    }
+    return (uint64)mem;
+  }
   return pa;
 }
 
@@ -318,13 +365,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = (PTE_FLAGS(*pte) & (~PTE_W)) | PTE_C; // COW:clear writeable flag  add COW page flag
+    flags = (PTE_FLAGS(*pte) & (~PTE_W)) | PTE_COW; // COW:clear writeable flag  add COW page flag
     *pte = PA2PTE(pa) | flags; // COW:Clear PTE_W in the PTEs of both child and parent.
     // COW:Do not need kalloc new physical mem
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       // kfree(mem); // COW:Not kalloc and surely not kfree
       goto err;
     }
+    increfcnt(pa);
   }
   return 0;
 
@@ -356,7 +404,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkcowaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
